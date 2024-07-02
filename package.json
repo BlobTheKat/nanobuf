@@ -1,0 +1,11 @@
+{
+  "type": "module",
+  "name": "nanobuf",
+  "version": "1.0.3",
+  "main": "index.js",
+  "keywords": ["structured", "buffer", "protobuf", "binary", "protocol"],
+  "author": "BlobKat <blob.kat@hotmail.com>",
+  "homepage": "https://github.com/BlobTheKat/nanobuf",
+  "license": "GPL-3.0-only",
+  "description": "Encode and decode structured data to/from a binary buffer"
+}

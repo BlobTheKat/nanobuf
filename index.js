@@ -1,0 +1,300 @@
+export const decoder = new TextDecoder()
+export const encoder = new TextEncoder()
+
+globalThis.TypedArray ??= Object.getPrototypeOf(Uint8Array)
+export class BufReader extends DataView{
+	constructor(arr){
+		if(arr instanceof ArrayBuffer)super(arr)
+		else super(arr.buffer, arr.byteOffset, arr.byteLength)
+		this.i = 0
+	}
+	decode(t,v){return t.decode(this,v)}
+	u8(){ try{return this.getUint8(this.i++)}catch{return 0} }
+	i8(){ try{return this.getInt8(this.i++)}catch{return 0} }
+	u16(){ try{return this.getUint16((this.i+=2)-2)}catch{return 0} }
+	i16(){ try{return this.getInt16((this.i+=2)-2)}catch{return 0} }
+	u32(){ try{return this.getUint32((this.i+=4)-4)}catch{return 0} }
+	i32(){ try{return this.getInt32((this.i+=4)-4)}catch{return 0} }
+	u64(){ try{return this.getUint32((this.i+=8)-8)*4294967296+this.getUint32(this.i-4)}catch{return 0} }
+	i64(){ try{return this.getInt32((this.i+=8)-8)*4294967296+this.getUint32(this.i-4)}catch{return 0} }
+	bu64(){ try{return this.getBigUint64((this.i+=8)-8)}catch{return 0} }
+	bi64(){ try{return this.getBigInt64((this.i+=8)-8)}catch{return 0} }
+	f32(){ try{return this.getFloat32((this.i+=4)-4)}catch{return 0} }
+	f64(){ try{return this.getFloat64((this.i+=8)-8)}catch{return 0} }
+	bool(){ try{return this.getUint8(this.i++) != 0}catch{return 0} }
+	v64(){ try{
+		const n = this.getUint8(this.i++)
+		if(n < 64) return n
+		if(n >= 128) return (this.getUint32((this.i += 7)-8)&0x7FFFFFFF)*4294967296+this.getUint32(this.i-4)
+		if(n >= 96) return this.getUint32((this.i += 3)-4)&0x1FFFFFFF
+		return this.getUint8(this.i++)|n<<8&0x1FFF
+	}catch{return 0} }
+	bv64(){ try{
+		let n = this.getUint8(this.i++)
+		if(n >= 64){
+			if(n >= 128) return this.getBigUint64((this.i+=7)-8)&0x7FFFFFFFFFFFFFFFn
+			n = n >= 96 ? this.getUint32((this.i += 3)-4)&0x1FFFFFFF : this.getUint8(this.i++)|n<<8&0x1FFF
+		}
+		return BigInt(n)
+	}catch{return 0} }
+	v32(){ try{
+		const n = this.getUint8(this.i++)
+		if(n < 64) return n
+		if(n >= 128) return this.getUint32((this.i += 3)-4) & 0x7FFFFFFF
+		return this.getUint8(this.i++)|n<<8&0x3FFF
+	}catch{return 0} }
+	v16(){ try{
+		const n = this.getUint8(this.i++)
+		return n < 128 ? n : this.getUint8(this.i++)|n<<8&0x3FFF
+	}catch{return 0} }
+	skip(n){ this.i += n }
+	u8arr(len = -1){ try{
+		let i = this.i
+		if(len < 0){
+			len = this.getUint8(i++)
+			if(len >= 64){
+				if(len >= 128)len = this.getUint32(i) & 0x7FFFFFFF, i += 3
+				else len = this.getUint8(this.i++)|n<<8&0x3FFF
+			}
+		}
+		this.i = i + len
+		return new Uint8Array(this.buffer.slice(i+=this.byteOffset, len))
+	}catch{return new Uint8Array()} }
+	str(){
+		let i = this.i
+		let len = this.getUint8(i++)
+		if(len >= 64){
+			if(len >= 128)len = this.getUint32(i) & 0x7FFFFFFF, i += 3
+			else len = this.getUint8(this.i++)|n<<8&0x3FFF
+		}
+		this.i = i + len
+		return decoder.decode(new Uint8Array(this.buffer, this.byteOffset + i, len))
+	}
+	enum({intToStr}){
+		let n = this.getUint8(this.i++)
+		if(n > 64){
+			if(n >= 128) n = this.getUint32((this.i += 3)-4) & 0x7FFFFFFF
+			else n = this.getUint8(this.i++)|n<<8&0x3FFF
+		}
+		return intToStr[n]??''
+	}
+	view(size=0){ return new Uint8Array(this.buffer, this.byteOffset+(this.i+=size)-size, size) }
+	get read(){ return this.i }
+	get left(){ return this.byteLength - this.i }
+	get overran(){ return this.i>this.byteLength }
+	toUint8Array(){return new Uint8Array(this.buffer,this.byteOffset+this.i,this.byteLength-this.i)}
+	toBuffer(){return Buffer.from(this.buffer,this.byteOffset+this.i,this.byteLength-this.i)}
+	toWriter(){return new BufWriter(this.buffer.slice(this.byteOffset, this.i*2), this.i)}
+	[Symbol.for('nodejs.util.inspect.custom')](){
+		let str = `BufReader(${this.byteLength - this.i}) [ \x1b[33m`
+		let {i} = this; const end = (i+50>this.byteLength?this.byteLength:i+50)
+		while(i<end){
+			const a = this.getUint8(i++)
+			str += '0123456789abcdef'[a>>4]+'0123456789abcdef'[a&15]+' '
+		}
+		return str += `\x1b[m${this.byteLength>end?'... ':''}]`
+	}
+}
+const {floor, trunc, fround} = Math
+export class BufWriter{
+	constructor(arr = new ArrayBuffer(64), i = 0){
+		this.buf = new DataView(arr)
+		this.i = i<=(this.cap = arr.byteLength)?i:this.cap
+	}
+	_grow(n = 0){
+		const r = new Uint8Array(new ArrayBuffer(this.cap=(this.cap<<1)+n))
+		r.set(new Uint8Array(this.buf.buffer), 0)
+		this.buf = new DataView(r.buffer)
+	}
+	encode(t,v){return t.encode(this,v)}
+	u8(n=0){ if(this.i >= this.cap)this._grow(); this.buf.setUint8(this.i++, n) }
+	i8(n=0){ if(this.i >= this.cap)this._grow(); this.buf.setInt8(this.i++, n) }
+	u16(n=0){ if((this.i+=2) > this.cap)this._grow(); this.buf.setUint16(this.i-2, n) }
+	i16(n=0){ if((this.i+=2) > this.cap)this._grow(); this.buf.setInt16(this.i-2, n) }
+	u32(n=0){ if((this.i+=4) > this.cap)this._grow(); this.buf.setUint32(this.i-4, n) }
+	i32(n=0){ if((this.i+=4) > this.cap)this._grow(); this.buf.setInt32(this.i-4, n) }
+	u64(n=0){ if((this.i+=8) > this.cap)this._grow(); this.buf.setUint32(this.i-8, floor(trunc(n)/4294967296)); this.buf.setInt32(this.i-4, n|0) }
+	i64(n=0){ if((this.i+=8) > this.cap)this._grow(); this.buf.setInt32(this.i-8, floor(trunc(n)/4294967296)); this.buf.setInt32(this.i-4, n|0) }
+	bu64(n=0){ if((this.i+=8) > this.cap)this._grow(); this.buf.setBigUint64(this.i-8, n) }
+	bi64(n=0){ if((this.i+=8) > this.cap)this._grow(); this.buf.setBigInt64(this.i-8, n) }
+	f32(n=0){ if((this.i+=4) > this.cap)this._grow(); this.buf.setFloat32(this.i-4, n) }
+	f64(n=0){ if((this.i+=8) > this.cap)this._grow(); this.buf.setFloat64(this.i-8, n) }
+	bool(n=false){ if(this.i >= this.cap)this._grow(); this.buf.setUint8(this.i++, n) }
+	// 1xxxxxxx (+7B)
+	// 011xxxxx (+3B)
+	// 010xxxxx (+1B)
+	// 00xxxxxx
+	v64(n=0){
+		if(this.i > this.cap-8) this._grow()
+		if(n > 0x3F){
+			if(n > 0x1FFFFFFF) this.buf.setUint32((this.i += 8) - 8, floor(trunc(n)/4294967296) | 0x80000000), this.buf.setInt32(this.i - 4, n|0)
+			else if(n > 0x1FFF) this.buf.setInt32((this.i += 4) - 4, n | 0x60000000)
+			else this.buf.setUint16((this.i += 2) - 2, n | 0x4000)
+		}else this.buf.setUint8(this.i++, n<0?0:n)
+	}
+	bv64(n=0){
+		if(this.i > this.cap-8) this._grow()
+		const n2 = Number(n)
+		if(n2 > 0x3F){
+			if(n2 > 0x1FFFFFFF) this.buf.setBigUint64((this.i += 8) - 8, n | 0x8000000000000000n)
+			else if(n2 > 0x1FFFn) this.buf.setInt32((this.i += 4) - 4, n2 | 0x60000000)
+			else this.buf.setUint16((this.i += 2) - 2, n2 | 0x4000)
+		}else this.buf.setUint8(this.i++, n2<0?0:n2)
+	}
+	// 1xxxxxxx (+3B)
+	// 01xxxxxx (+1B)
+	// 00xxxxxx
+	v32(n=0){
+		if(this.i > this.cap-4) this._grow()
+		if(n > 0x3F){
+			if(n > 0x3FFF) this.buf.setInt32((this.i += 4) - 4, n | 0x80000000)
+			else this.buf.setUint16((this.i += 2) - 2, n | 0x4000)
+		}else this.buf.setUint8(this.i++, n<0?0:n)
+	}
+	// 1xxxxxxx (+1B)
+	// 0xxxxxxx
+	v16(n=0){
+		if(this.i > this.cap-2) this._grow()
+		if(n > 0x7F) this.buf.setUint16((this.i += 2) - 2, n | 0x8000)
+		else this.buf.setUint8(this.i++, n>=0?n:0)
+	}
+	u8arr(v=[], len = -1){
+		if(len < 0){
+			len = v.length
+			if(len>2147483647){if(this.i >= this.cap) this._grow(); this.buf.setUint8(this.i++, 0);return}
+			if(this.i > this.cap-4-len) this._grow(len)
+			if(len > 0x3FFF){
+				if(len > 0x7FFFFFFF) this.buf.setUint8(this.i++, len=0)
+				else this.buf.setInt32((this.i += 4) - 4, len | 0x80000000)
+			}else if(len > 0x3F)this.buf.setUint16((this.i += 2) - 2, len | 0x4000)
+			else this.buf.setUint8(this.i++, len)
+		}else if(this.i > this.cap-len) this._grow(len)
+		new Uint8Array(this.buffer).set(v, this.i); this.i += len
+	}
+	skip(n=0){ if((this.i+=n) > this.cap) this._grow(n) }
+	str(v=''){
+		if(this.i > this.cap-4) this._grow()
+		const encoded = encoder.encode(v)
+		const len = encoded.length
+		if(len>2147483647){if(this.i >= this.cap) this._grow(); this.buf.setUint8(this.i++, 0);return}
+		if(this.i > this.cap-4-len) this._grow(len)
+		if(len > 0x3FFF){
+			if(len > 0x7FFFFFFF) this.buf.setUint8(this.i++, len=0)
+			else this.buf.setInt32((this.i += 4) - 4, len | 0x80000000)
+		}else if(len > 0x3F)this.buf.setUint16((this.i += 2) - 2, len | 0x4000)
+		else this.buf.setUint8(this.i++, len)
+		new Uint8Array(this.buffer).set(encoded, this.i); this.i += len
+	}
+	enum({strToInt, default: d}, str){
+		if(this.i > this.cap-4) this._grow()
+		const n = strToInt.get(str)??d
+		if(n > 0x3F){
+			if(n > 0x3FFF) this.buf.setInt32((this.i += 4) - 4, n | 0x80000000)
+			else this.buf.setUint16((this.i += 2) - 2, n | 0x4000)
+		}else this.buf.setUint8(this.i++, n<0?0:n)
+	}
+	get buffer(){return this.buf.buffer}
+	get byteOffset(){return 0}
+	get byteLength(){return this.i}
+	get written(){return this.i}
+	toUint8Array(){return new Uint8Array(this.buf.buffer,0,this.i)}
+	toBuffer(){return Buffer.from(this.buf.buffer,0,this.i)}
+	toReader(){return new BufReader(this)}
+	clone(){ return new BufWriter(this.buf.buffer.slice(0), this.i) }
+	[Symbol.for('nodejs.util.inspect.custom')](){
+		let {i} = this, str = `BufWriter(${i}) [ ${i>50?(i-=50,'... '):(i=0,'')}\x1b[33m`
+		while(i<this.i){
+			const a = this.buf.getUint8(i++)
+			str += '0123456789abcdef'[a>>4]+'0123456789abcdef'[a&15]+' '
+		}
+		return str += `\x1b[m]`
+	}
+}
+if('transfer' in ArrayBuffer.prototype) BufWriter.prototype._grow = function(n=0){ this.buf = new DataView(this.buf.buffer.transfer(this.cap=(this.cap<<1)+n)) }
+// Feds are coming, watch out!
+let encodable = (f,e,d,s) => (f.encode=e,f.decode=d,f.size=s,f)
+export const u8 = encodable((a=0) => (typeof a=='number'?a:Number(a))&255, (buf,a) => buf.u8(a), (buf,_) => buf.u8(),1)
+export const i8 = encodable((a=0) => (typeof a=='number'?a:Number(a))<<24>>24, (buf,a) => buf.i8(a), (buf,_) => buf.i8(),1)
+export const u16 = encodable((a=0) => (typeof a=='number'?a:Number(a))&65535, (buf,a) => buf.u16(a), (buf,_) => buf.u16(),2)
+export const i16 = encodable((a=0) => (typeof a=='number'?a:Number(a))<<16>>16, (buf,a) => buf.i16(a), (buf,_) => buf.i16(),2)
+export const u32 = encodable((a=0) => (typeof a=='number'?a:Number(a))>>>0, (buf,a) => buf.u32(a), (buf,_) => buf.u32(),4)
+export const i32 = encodable((a=0) => (typeof a=='number'?a:Number(a))|0, (buf,a) => buf.i32(a), (buf,_) => buf.i32(),4)
+export const u64 = encodable((a=0) => (floor(trunc(a=(typeof a=='number'?a:Number(a)))/4294967296)>>>0)*4294967296+(a>>>0), (buf,a) => buf.u64(a), (buf,_) => buf.u64(),8)
+export const i64 = encodable((a=0) => floor(trunc(a=(typeof a=='number'?a:Number(a)))/4294967296)*4294967296+(a>>>0), (buf,a) => buf.i64(a), (buf,_) => buf.i64(),8)
+export const bu64 = encodable((a=0n) => (typeof a=='bigint'?a:BigInt(a))&0xFFFFFFFFFFFFFFFFn, (buf,a) => buf.bu64(a), (buf,_) => buf.bu64(),8)
+export const bi64 = encodable((a=0n) => (a=(typeof a=='bigint'?a:BigInt(a))&0xFFFFFFFFFFFFFFFFn)>0x7FFFFFFFFFFFFFFFn?a|-9223372036854775808n:a, (buf,a) => buf.bi64(a), (buf,_) => buf.bi64(),8)
+export const f32 = encodable((a=0) => fround(typeof a=='number'?a:Number(a)), (buf,a) => buf.f32(a), (buf,_) => buf.f32(),4)
+export const f64 = encodable((a=0) => typeof a=='number'?a:Number(a), (buf,a) => buf.f64(a), (buf,_) => buf.f64(),8)
+export const v16 = encodable((a=0) => (a=typeof a=='number'?a:Number(a))<0?0:a&32767, (buf,a) => buf.v16(a), (buf,_) => buf.v16(),1)
+export const v32 = encodable((a=0) => (a=typeof a=='number'?a:Number(a))<0?0:a&2147483647, (buf,a) => buf.v32(a), (buf,_) => buf.v32(),1)
+export const v64 = encodable((a=0) => (typeof a=='number'?a:Number(a))<0?0:a%9223372036854775808, (buf,a) => buf.v32(a), (buf,_) => buf.v32(),1)
+export const bv64 = encodable((a=0n) => (typeof a=='bigint'?a:BigInt(a))<0n?0n:a&0x7FFFFFFFFFFFFFFFn, (buf,a) => buf.v32(a), (buf,_) => buf.v32(),1)
+export const u8arr = encodable(a => {try{const b = typeof a == 'string' ? encoder.encode(a) : new Uint8Array(a.buffer ? a.buffer.slice(a.byteOffset, a.byteLength) : a instanceof ArrayBuffer ? a.slice(0,2147483647) : a);return b.byteLength>2147483647?b.subarray(0,2147483647):b}catch{return new Uint8Array()}}, (buf,a) => buf.u8arr(a), (buf,_) => buf.u8arr(),1)
+u8arr.len = len => ((len=floor(len))>=0||(len=0), encodable(a => a instanceof ArrayBuffer ? new Uint8Array(a.byteLength >= len ? a.slice(0, len) : len) : new Uint8Array(a?.length === len ? a : len), (buf,a) => buf.u8arr(a, len), (buf,_) => buf.u8arr(len),len))
+export const str = encodable((a='') => a+'', (buf,a) => buf.str(a), (buf,_) => buf.str(),1)
+export const bool = encodable(a => !!a, (buf,a) => buf.bool(a), (buf,_) => buf.bool(),1)
+
+export let Struct = (obj, f) => {
+	const fparams = [], f1ret = [], f2bod = [], f3bod = [], f3ret = []
+	let i = 0, sz = 0
+	const os = {}
+	for(const k in obj){
+		let n = /^[a-zA-Z$_][a-zA-Z0-9$_]*$/.test(k) ? k : JSON.stringify(k)
+		fparams.push(n+':a'+i)
+		f1ret.push(n+':this.a'+i+'(a'+i+')')
+		f2bod.push('this.a'+i+'.encode(b,a'+i+')')
+		f3ret.push(''+n+':this.a'+i+'.decode(b)')
+		n = (n.length==k.length?'v.'+n:'v['+n+']')
+		f3bod.push(n+'=this.a'+i+'.decode(b,'+n+')')
+		sz += (os['a'+i++] = obj[k]).size??0
+	}
+	const f1bod = `return{${f1ret}}`
+	f ??= new Struct.constructor(`{${fparams}}={}`, f1bod).bind(os)
+	f.encode = new Struct.constructor(`b,{${fparams}}={}`, f2bod.join(';')).bind(os)
+	f.decode = new Struct.constructor(`b,v`, `if(!v)return {${f3ret}};${f3bod.join(';')};return v`).bind(os)
+	f.size = sz
+	f.of = new Struct.constructor(Object.keys(os), f1bod).bind(os)
+	return f
+}
+try{new Struct.constructor('')}catch{Struct = obj => encodable(a => {
+	const o = {}
+	for(const k in obj) o[k] = obj[k](a[k])
+	return o
+}, (buf, v={}) => {for(const k in obj) obj[k].encode(buf, v[k])},
+(buf, v={}) => {for(const k in obj) v[k]=obj[k].decode(buf, v[k]);return v})}
+export const Arr = (type, len = -1) => {
+	(len=floor(len))>=0||(len=-1)
+	const f=encodable(a => {
+	const arr = []
+	try{for(const el of a) arr.push(type(el))}catch{}
+	if(len >= 0){
+		if(arr.length > len) arr.length = len
+		else while(arr.length < len) arr.push(type())
+	}else if(arr.length > 2147483647) arr.length = 2147483647
+	return arr
+}, (buf, v=[]) => {
+	const l = len < 0 ? (buf.v32(v.length),v.length) : len
+	for(let i = 0; i < l; i++) type.encode(buf, v[i])
+}, (buf, v) => {
+	const l = len < 0 ? buf.v32() : len
+	if(v) for(let i = 0; i < l; i++) v[i] = type.decode(buf, v[i])
+	else{ v = []; for(let i = l; --i>=0;) v.push(type.decode(buf)) }
+	return v
+}, len<0?1:(type.size??0)*len);f.of=(...a)=>f(a);return f}
+
+export const Optional = t => encodable(a => a==null?null:t(a), (buf,v) => {
+	if(v==null) buf.u8(0)
+	else buf.u8(1),t.encode(buf,v)
+}, (buf, v) => buf.u8() ? t.decode(buf, v) : null, 1)
+
+export const Enum = (v=[]) => {
+	const map = new Map, rmap = []
+	if(Array.isArray(v)) for(let i=0;i<v.length;i++) map.set(v[i]+'',i), rmap[i] = v[i]
+	else for(const k in v){const j=v[k]&2147483647;map.set(k, j);rmap[j]=k}
+	let none = -1; while(rmap[++none]);
+	const f = encodable(a => typeof a=='string'?map.get(a)??none:Number(a)&2147483647, (buf,a) => buf.v32(typeof a=='string'?map.get(a)??none:a), (buf, _) => rmap[buf.v32()]??'', 1)
+	f.strToInt = map; f.intToStr = rmap; f.default = none
+	return f
+}
+
+export const Padding = (sz=0) => encodable(() => undefined, (buf,_) => buf.skip(sz), (buf, _) => (buf.i+=sz,undefined), sz)
