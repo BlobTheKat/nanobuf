@@ -23,7 +23,7 @@ someSocket.on('message', data => {
 	            && buf.str() == 'Hello world!'
 	            && buf.f64() == 420.69)
 	// Check that we have read everything (optional)
-	console.assert(buf.left == 0)
+	console.assert(buf.remaining == 0)
 })
 
 ```
@@ -33,7 +33,7 @@ Perks:
 - Performant. Know a faster implementation? Open an issue on our github!
 - Lightweight (15KB .js)
 - Import `index.js` as-is in the browser
-- Common format: buffers can be decoded easily with other libraries on other machines (no need to worry about endianness, alignment, integer sizes, etc...)
+- Data is encoded in network format (big endian, tightly packed, octets, etc...)
 
 ## Schemas
 
