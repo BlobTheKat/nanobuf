@@ -98,6 +98,7 @@ type StructType = Struct | Arr | Enum | Optional | Padding | bool | u8 | i8 | u1
 
 // Always use buf.<thing>(123) instead of buf.encode(<thing>, 123) when available, since the argument types are static it will always be more performant
 class BufWriter{
+	constructor(arr?: ArrayBuffer, head?: number) // Construct a new BufWriter, optionally passing the underlying ArrayBuffer and head position. Once the head surpasses the ArrayBuffer's length, it is discarded (and possibly detached) and a new ArrayBuffer is allocated and used
 	bool(n: boolean) // true or false, 1 byte
 	u8(n: number) // Write a value in [0, 255], 1 byte
 	i8(n: number) // Write a value in [-128, 127], 1 byte
@@ -121,12 +122,13 @@ class BufWriter{
 	encode(type: StructType, value: any) // Encode an arbitrary type
 	skip(bytes: number) // Skip a number of bytes, leaving them unwritten (0)
 
-	toUint8Array(): Uint8Array // Get a Uint8Array pointing to the written data. This is a reference and not a copy. Use Uint8Array.slice() to turn it into a copy
-	toBuffer(): Buffer // Like toUint8Array() but for node.js Buffers, may not work in the browser
-	toReader(): BufReader // Get a BufReader pointing to the written data, with the reading head at the beginning. This is a reference and not a copy
-	clone(): BufWriter // Get an actual copy of the written data, as a second BufWriter
+	toUint8Array(): Uint8Array // View into the currently written data. May become detached as writer grows, consider using a copying method
+	toReader(): BufReader // Reader for the currently written data. May become detached as writer grows, consider using a copying method
+	copyToArrayBuffer(): ArrayBuffer // Get a copy of the written data as an ArrayBuffer
+	copy(): BufWriter // Get a copy of the written data as a second BufWriter
+	copyToReader(): BufReader // Same as new BufReader(this.copyToArrayBuffer())
 	written: number // How many bytes have been written to this buffer so far
-	buffer: ArrayBuffer // The underlying array buffer that is being modified. May be larger than this.written (this is intentional to avoid excessive reallocations)
+	buffer: ArrayBuffer // The underlying array buffer that is being modified. May be larger than this.written (this is intentional to avoid excessive reallocations). May become detached as writer grows
 	byteOffset: number // Always 0
 	byteLength: number // Same as .written
 }
@@ -157,10 +159,12 @@ class BufReader extends DataView{
 	view(bytes: number) // Skip a number of bytes and return a Uint8Array pointing to those skipped bytes. Similar to u8arr(len)
 
 	toUint8Array(): Uint8Array // Get a Uint8Array pointing to remaining unread data. This is a reference and not a copy. Use Uint8Array.slice() to turn it into a copy
-	toBuffer(): Buffer // Like toUint8Array() but for node.js Buffers, may not work in the browser
-	toWriter(): BufReader // Get a BufWriter containing a copy of the data that has been read so far, allowing you to continue writing as if the read values had actually been written
+	copyReadToArrayBuffer(): ArrayBuffer // Copies all the bytes that have already been read since this object's creation into a new ArrayBuffer
+	copyRemainingToArrayBuffer(): ArrayBuffer // Copies all the bytes yet to be read into a new ArrayBuffer
+	copyToWriter(): BufReader // Same as new BufWriter(this.copyReadToArrayBuffer(), this.i)
+	copy(): BufReader // Same as new BufReader(this.copyRemainingToArrayBuffer())
 	read: number // How many bytes have been read from this buffer so far
-	left: number // How many more bytes can be read before reaching the end of the buffer
+	remaining: number // How many more bytes can be read before reaching the end of the buffer
 	overran: boolean // Whether we have reached and passed the end of the buffer. All read functions will return "null" values (i.e, 0, "", Uint8Array(0)[], false, ...)
 }
 

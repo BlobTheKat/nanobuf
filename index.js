@@ -3,12 +3,13 @@ export const encoder = new TextEncoder()
 
 globalThis.TypedArray ??= Object.getPrototypeOf(Uint8Array)
 export class BufReader extends DataView{
+	/**  */
 	constructor(arr){
-		if(arr instanceof ArrayBuffer)super(arr)
+		if(arr instanceof ArrayBuffer) super(arr)
 		else super(arr.buffer, arr.byteOffset, arr.byteLength)
 		this.i = 0
 	}
-	decode(t,v){return t.decode(this,v)}
+	decode(t,v){ return t.decode(this,v) }
 	u8(){ try{return this.getUint8(this.i++)}catch{return 0} }
 	i8(){ try{return this.getInt8(this.i++)}catch{return 0} }
 	u16(){ try{return this.getUint16((this.i+=2)-2)}catch{return 0} }
@@ -47,6 +48,7 @@ export class BufReader extends DataView{
 		const n = this.getUint8(this.i++)
 		return n < 128 ? n : this.getUint8(this.i++)|n<<8&0x3FFF
 	}catch{return 0} }
+	/** Advance a number of bytes. Useful for padding */
 	skip(n){ this.i += n }
 	u8arr(len = -1){ try{
 		let i = this.i
@@ -78,13 +80,24 @@ export class BufReader extends DataView{
 		}
 		return intToStr[n]??''
 	}
+	/** Returns a mutable Uint8Array view of the next bytes */
 	view(size=0){ return new Uint8Array(this.buffer, this.byteOffset+(this.i+=size)-size, size) }
+	/** How many bytes have been read from this buffer so far */
 	get read(){ return this.i }
-	get left(){ return this.byteLength - this.i }
+	/** How many more bytes can be read before reaching the end of the buffer */
+	get remaining(){ return this.byteLength - this.i }
+	/** Whether we have reached and passed the end of the buffer. All read functions will return "null" values (i.e, 0, "", Uint8Array(0)[], false, ...) */
 	get overran(){ return this.i>this.byteLength }
-	toUint8Array(){return new Uint8Array(this.buffer,this.byteOffset+this.i,this.byteLength-this.i)}
-	toBuffer(){return Buffer.from(this.buffer,this.byteOffset+this.i,this.byteLength-this.i)}
-	toWriter(){return new BufWriter(this.buffer.slice(this.byteOffset, this.i*2), this.i)}
+	/** Get a Uint8Array pointing to remaining unread data. This is a reference and not a copy. Use Uint8Array.slice() to turn it into a copy */
+	toUint8Array(){ return new Uint8Array(this.buffer,this.byteOffset+this.i,this.byteLength-this.i) }
+	/** Copies all the bytes that have already been read since this object's creation into a new ArrayBuffer */
+	copyReadToArrayBuffer(){ return this.buffer.slice(this.byteOffset,this.byteOffset+this.i) }
+	/** Copies all the bytes yet to be read into a new ArrayBuffer */
+	copyRemainingToArrayBuffer(){ return this.buffer.slice(this.byteOffset+this.i,this.byteOffset+this.byteLength) }
+	/** Same as new BufWriter(this.copyReadToArrayBuffer(), this.i) */
+	copyToWriter(){ return new BufWriter(this.buffer.slice(this.byteOffset, this.byteOffset+this.i), this.i) }
+	/** Same as new BufReader(this.copyRemainingToArrayBuffer()) */
+	copy(){ return new BufReader(this.buffer.slice(this.byteOffset+this.i,this.byteOffset+this.byteLength)) }
 	[Symbol.for('nodejs.util.inspect.custom')](){
 		let str = `BufReader(${this.byteLength - this.i}) [ \x1b[33m`
 		let {i} = this; const end = (i+50>this.byteLength?this.byteLength:i+50)
@@ -97,20 +110,23 @@ export class BufReader extends DataView{
 }
 const {floor, trunc, fround} = Math
 export class BufWriter{
-	constructor(arr = new ArrayBuffer(64), i = 0){
+	/** Construct a new BufWriter, optionally passing the underlying ArrayBuffer and head position. Once the head surpasses the ArrayBuffer's length, it is discarded (and possibly detached) and a new ArrayBuffer is allocated and used */
+	constructor(arr = new ArrayBuffer(64), head = 0){
 		this.buf = new DataView(arr)
-		this.i = i<=(this.cap = arr.byteLength)?i:this.cap
+		this.buf8 = new Uint8Array(arr)
+		this.i = head<=(this.cap=arr.byteLength)?head:this.cap
 	}
 	_grow(n = 0){
 		const r = new Uint8Array(new ArrayBuffer(this.cap=(this.cap<<1)+n))
-		r.set(new Uint8Array(this.buf.buffer), 0)
+		r.set(this.buf8, 0)
 		this.buf = new DataView(r.buffer)
+		this.buf8 = r
 	}
 	encode(t,v){return t.encode(this,v)}
-	u8(n=0){ if(this.i >= this.cap)this._grow(); this.buf.setUint8(this.i++, n) }
-	i8(n=0){ if(this.i >= this.cap)this._grow(); this.buf.setInt8(this.i++, n) }
-	u16(n=0){ if((this.i+=2) > this.cap)this._grow(); this.buf.setUint16(this.i-2, n) }
-	i16(n=0){ if((this.i+=2) > this.cap)this._grow(); this.buf.setInt16(this.i-2, n) }
+	u8(n=0){ if(this.i >= this.cap)this._grow(); this.buf8[this.i++] = n }
+	i8(n=0){ if(this.i >= this.cap)this._grow(); this.buf8[this.i++] = n }
+	u16(n=0){ if((this.i+=2) > this.cap)this._grow(); this.buf8[this.i-2] = n>>8; this.buf8[this.i-1] = n }
+	i16(n=0){ if((this.i+=2) > this.cap)this._grow(); this.buf8[this.i-2] = n>>8; this.buf8[this.i-1] = n }
 	u32(n=0){ if((this.i+=4) > this.cap)this._grow(); this.buf.setUint32(this.i-4, n) }
 	i32(n=0){ if((this.i+=4) > this.cap)this._grow(); this.buf.setInt32(this.i-4, n) }
 	u64(n=0){ if((this.i+=8) > this.cap)this._grow(); this.buf.setUint32(this.i-8, floor(trunc(n)/4294967296)); this.buf.setInt32(this.i-4, n|0) }
@@ -119,7 +135,7 @@ export class BufWriter{
 	bi64(n=0){ if((this.i+=8) > this.cap)this._grow(); this.buf.setBigInt64(this.i-8, n) }
 	f32(n=0){ if((this.i+=4) > this.cap)this._grow(); this.buf.setFloat32(this.i-4, n) }
 	f64(n=0){ if((this.i+=8) > this.cap)this._grow(); this.buf.setFloat64(this.i-8, n) }
-	bool(n=false){ if(this.i >= this.cap)this._grow(); this.buf.setUint8(this.i++, n) }
+	bool(n=false){ if(this.i >= this.cap)this._grow(); this.buf8[this.i++] = n }
 	// 1xxxxxxx (+7B)
 	// 011xxxxx (+3B)
 	// 010xxxxx (+1B)
@@ -129,17 +145,17 @@ export class BufWriter{
 		if(n > 0x3F){
 			if(n > 0x1FFFFFFF) this.buf.setUint32((this.i += 8) - 8, floor(trunc(n)/4294967296) | 0x80000000), this.buf.setInt32(this.i - 4, n|0)
 			else if(n > 0x1FFF) this.buf.setInt32((this.i += 4) - 4, n | 0x60000000)
-			else this.buf.setUint16((this.i += 2) - 2, n | 0x4000)
-		}else this.buf.setUint8(this.i++, n<0?0:n)
+			else this.buf8[this.i++] = n>>8|64, this.buf8[this.i++] = n
+		}else this.buf8[this.i++] = n<0?0:n
 	}
-	bv64(n=0){
+	bv64(bn=0){
 		if(this.i > this.cap-8) this._grow()
-		const n2 = Number(n)
-		if(n2 > 0x3F){
-			if(n2 > 0x1FFFFFFF) this.buf.setBigUint64((this.i += 8) - 8, n | 0x8000000000000000n)
-			else if(n2 > 0x1FFFn) this.buf.setInt32((this.i += 4) - 4, n2 | 0x60000000)
-			else this.buf.setUint16((this.i += 2) - 2, n2 | 0x4000)
-		}else this.buf.setUint8(this.i++, n2<0?0:n2)
+		const n = Number(bn)
+		if(n > 0x3F){
+			if(n > 0x1FFFFFFF) this.buf.setBigUint64((this.i += 8) - 8, bn | 0x8000000000000000n)
+			else if(n > 0x1FFFn) this.buf.setInt32((this.i += 4) - 4, n | 0x60000000)
+			else this.buf8[this.i++] = n>>8|64, this.buf8[this.i++] = n
+		}else this.buf8[this.i++] = n<0?0:n
 	}
 	// 1xxxxxxx (+3B)
 	// 01xxxxxx (+1B)
@@ -148,63 +164,78 @@ export class BufWriter{
 		if(this.i > this.cap-4) this._grow()
 		if(n > 0x3F){
 			if(n > 0x3FFF) this.buf.setInt32((this.i += 4) - 4, n | 0x80000000)
-			else this.buf.setUint16((this.i += 2) - 2, n | 0x4000)
-		}else this.buf.setUint8(this.i++, n<0?0:n)
+			else this.buf8[this.i++] = n>>8|64, this.buf8[this.i++] = n
+		}else this.buf8[this.i++] = n<0?0:n
 	}
 	// 1xxxxxxx (+1B)
 	// 0xxxxxxx
 	v16(n=0){
 		if(this.i > this.cap-2) this._grow()
-		if(n > 0x7F) this.buf.setUint16((this.i += 2) - 2, n | 0x8000)
-		else this.buf.setUint8(this.i++, n>=0?n:0)
+		if(n > 0x7F) this.buf8[this.i++] = n>>8|128, this.buf8[this.i++] = n
+		else this.buf8[this.i++] = n>=0?n:0
 	}
-	u8arr(v=[], len = -1){
-		if(len < 0){
-			len = v.length
-			if(len>2147483647){if(this.i >= this.cap) this._grow(); this.buf.setUint8(this.i++, 0);return}
-			if(this.i > this.cap-4-len) this._grow(len)
-			if(len > 0x3FFF){
-				if(len > 0x7FFFFFFF) this.buf.setUint8(this.i++, len=0)
-				else this.buf.setInt32((this.i += 4) - 4, len | 0x80000000)
-			}else if(len > 0x3F)this.buf.setUint16((this.i += 2) - 2, len | 0x4000)
-			else this.buf.setUint8(this.i++, len)
-		}else if(this.i > this.cap-len) this._grow(len)
-		new Uint8Array(this.buffer).set(v, this.i); this.i += len
+	u8arr(v, n = -1){
+		if(!(v instanceof Uint8Array)){
+			if(v instanceof BufWriter) v = v.buf8.subarray(0, v.i)
+			else{if(this.i >= this.cap) this._grow(); this.buf8[this.i++] = 0;return}
+		}
+		if(n < 0){
+			n = v.byteLength
+			if(n>2147483647){if(this.i >= this.cap) this._grow(); this.buf8[this.i++] = 0;return}
+			if(this.i > this.cap-4-n) this._grow(n)
+			if(n > 0x3FFF){
+				if(n > 0x7FFFFFFF) this.buf8[this.i++] = n = 0
+				else this.buf.setInt32((this.i += 4) - 4, n | 0x80000000)
+			}else if(n > 0x3F) this.buf8[this.i++] = n>>8|64, this.buf8[this.i++] = n
+			else this.buf8[this.i++] = n
+		}else if(this.i > this.cap-n) this._grow(n)
+		this.buf8.set(v, this.i); this.i += n
 	}
+	/** Advance a number of bytes. Useful for padding */
 	skip(n=0){ if((this.i+=n) > this.cap) this._grow(n) }
 	str(v=''){
 		if(this.i > this.cap-4) this._grow()
 		const encoded = encoder.encode(v)
-		const len = encoded.length
-		if(len>2147483647){if(this.i >= this.cap) this._grow(); this.buf.setUint8(this.i++, 0);return}
-		if(this.i > this.cap-4-len) this._grow(len)
-		if(len > 0x3FFF){
-			if(len > 0x7FFFFFFF) this.buf.setUint8(this.i++, len=0)
-			else this.buf.setInt32((this.i += 4) - 4, len | 0x80000000)
-		}else if(len > 0x3F)this.buf.setUint16((this.i += 2) - 2, len | 0x4000)
-		else this.buf.setUint8(this.i++, len)
-		new Uint8Array(this.buffer).set(encoded, this.i); this.i += len
+		let n = encoded.length
+		if(n>2147483647){if(this.i >= this.cap) this._grow(); this.buf8[this.i++] = 0;return}
+		if(this.i > this.cap-4-n) this._grow(n)
+		if(n > 0x3FFF){
+			if(n > 0x7FFFFFFF) this.buf8[this.i++] = n = 0
+			else this.buf.setInt32((this.i += 4) - 4, n | 0x80000000)
+		}else if(n > 0x3F) this.buf8[this.i++] = n>>8|64, this.buf8[this.i++] = n
+		else this.buf8[this.i++] = n
+		new Uint8Array(this.buffer).set(encoded, this.i); this.i += n
 	}
 	enum({strToInt, default: d}, str){
 		if(this.i > this.cap-4) this._grow()
 		const n = strToInt.get(str)??d
 		if(n > 0x3F){
 			if(n > 0x3FFF) this.buf.setInt32((this.i += 4) - 4, n | 0x80000000)
-			else this.buf.setUint16((this.i += 2) - 2, n | 0x4000)
-		}else this.buf.setUint8(this.i++, n<0?0:n)
+			else this.buf8[this.i++] = n>>8|64, this.buf8[this.i++] = n
+		}else this.buf8[this.i++] = n<0?0:n
 	}
-	get buffer(){return this.buf.buffer}
-	get byteOffset(){return 0}
-	get byteLength(){return this.i}
-	get written(){return this.i}
-	toUint8Array(){return new Uint8Array(this.buf.buffer,0,this.i)}
-	toBuffer(){return Buffer.from(this.buf.buffer,0,this.i)}
-	toReader(){return new BufReader(this)}
-	clone(){ return new BufWriter(this.buf.buffer.slice(0), this.i) }
+	/** How many bytes have been written to this buffer so far */
+	get written(){ return this.i }
+	/** The underlying array buffer that is being modified. May be larger than this.written (this is intentional to avoid excessive reallocations). May become detached as writer grows */
+	get buffer(){ return this.buf.buffer }
+	// Always 0
+	get byteOffset(){ return 0 }
+	// Same as .written
+	get byteLength(){ return this.i }
+	/** View into the currently written data. May become detached as writer grows, consider using a copying method */
+	toUint8Array(){ return this.buf8.subarray(0,this.i) }
+	/** Reader for the currently written data. May become detached as writer grows, consider using a copying method */
+	toReader(){ return new BufReader(this) }
+	/** Get a copy of the written data as an ArrayBuffer */
+	copyToArrayBuffer(){ return this.buf8.buffer.slice(0,this.i) }
+	/** Get a copy of the written data as a second BufWriter */
+	copy(){ return new BufWriter(this.buf.buffer.slice(0,this.i), this.i) }
+	/** Same as new BufReader(this.copyToArrayBuffer()) */
+	copyToReader(){ return new BufReader(this.buf8.buffer.slice(0,this.i)) }
 	[Symbol.for('nodejs.util.inspect.custom')](){
 		let {i} = this, str = `BufWriter(${i}) [ ${i>50?(i-=50,'... '):(i=0,'')}\x1b[33m`
 		while(i<this.i){
-			const a = this.buf.getUint8(i++)
+			const a = this.buf8[i++]
 			str += '0123456789abcdef'[a>>4]+'0123456789abcdef'[a&15]+' '
 		}
 		return str += `\x1b[m]`
