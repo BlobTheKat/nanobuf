@@ -253,7 +253,7 @@ export const i32 = encodable((a=0) => (typeof a=='number'?a:Number(a))|0, (buf,a
 export const u64 = encodable((a=0) => (floor(trunc(a=(typeof a=='number'?a:Number(a)))/4294967296)>>>0)*4294967296+(a>>>0), (buf,a) => buf.u64(a), (buf,_) => buf.u64(),8)
 export const i64 = encodable((a=0) => floor(trunc(a=(typeof a=='number'?a:Number(a)))/4294967296)*4294967296+(a>>>0), (buf,a) => buf.i64(a), (buf,_) => buf.i64(),8)
 export const bu64 = encodable((a=0n) => (typeof a=='bigint'?a:BigInt(a))&0xFFFFFFFFFFFFFFFFn, (buf,a) => buf.bu64(a), (buf,_) => buf.bu64(),8)
-export const bi64 = encodable((a=0n) => (a=(typeof a=='bigint'?a:BigInt(a))&0xFFFFFFFFFFFFFFFFn)>0x7FFFFFFFFFFFFFFFn?a|-9223372036854775808n:a, (buf,a) => buf.bi64(a), (buf,_) => buf.bi64(),8)
+export const bi64 = encodable((a=0n) => BigInt.asIntN(64, typeof a=='bigint'?a:BigInt(a)), (buf,a) => buf.bi64(a), (buf,_) => buf.bi64(),8)
 export const f32 = encodable((a=0) => fround(typeof a=='number'?a:Number(a)), (buf,a) => buf.f32(a), (buf,_) => buf.f32(),4)
 export const f64 = encodable((a=0) => typeof a=='number'?a:Number(a), (buf,a) => buf.f64(a), (buf,_) => buf.f64(),8)
 export const v16 = encodable((a=0) => (a=typeof a=='number'?a:Number(a))<0?0:a&32767, (buf,a) => buf.v16(a), (buf,_) => buf.v16(),1)
