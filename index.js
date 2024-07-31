@@ -72,13 +72,13 @@ export class BufReader extends DataView{
 		this.i = i + len
 		return decoder.decode(new Uint8Array(this.buffer, this.byteOffset + i, len))
 	}
-	enum({intToStr}){
+	enum({intToStr, defaultString}){
 		let n = this.getUint8(this.i++)
 		if(n > 64){
 			if(n >= 128) n = this.getUint32((this.i += 3)-4) & 0x7FFFFFFF
 			else n = this.getUint8(this.i++)|n<<8&0x3FFF
 		}
-		return intToStr[n]??''
+		return intToStr[n]??defaultString
 	}
 	/** Returns a mutable Uint8Array view of the next bytes */
 	view(size=0){ return new Uint8Array(this.buffer, this.byteOffset+(this.i+=size)-size, size) }
@@ -318,13 +318,14 @@ export const Optional = t => encodable(a => a==null?null:t(a), (buf,v) => {
 	else buf.u8(1),t.encode(buf,v)
 }, (buf, v) => buf.u8() ? t.decode(buf, v) : null, 1)
 
-export const Enum = (v=[]) => {
+export const Enum = (v=[], def=undefined) => {
 	const map = new Map, rmap = []
 	if(Array.isArray(v)) for(let i=0;i<v.length;i++) map.set(v[i]+'',i), rmap[i] = v[i]
 	else for(const k in v){const j=v[k]&2147483647;map.set(k, j);rmap[j]=k}
+	if(typeof def!='string') def=map.keys().next().value??''
 	let none = -1; while(rmap[++none]);
-	const f = encodable(a => typeof a=='string'?map.get(a)??none:Number(a)&2147483647, (buf,a) => buf.v32(typeof a=='string'?map.get(a)??none:a), (buf, _) => rmap[buf.v32()]??'', 1)
-	f.strToInt = map; f.intToStr = rmap; f.default = none
+	const f = encodable(a => typeof a=='string'?map.get(a)??none:Number(a)&2147483647, (buf,a) => buf.v32(typeof a=='string'?map.get(a)??none:a), (buf, _) => rmap[buf.v32()]??def, 1)
+	f.strToInt = map; f.intToStr = rmap; f.default = none; f.defaultString = def
 	return f
 }
 
