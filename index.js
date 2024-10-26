@@ -7,15 +7,37 @@ export class BufReader extends DataView{
 	constructor(arr){
 		if(arr instanceof ArrayBuffer) super(arr)
 		else super(arr.buffer, arr.byteOffset, arr.byteLength)
-		this.i = 0
+		this.i = this.bitState = 0
 	}
 	decode(t,v){ return t.decode(this,v) }
+	b1(){
+		let a = this.bitState
+		if(a<2) try{a=this.getUint8(this.i++)|256}catch{a=256}
+		this.bitState = a>>1; return a&1
+	}
+	b2(){
+		let a = this.bitState
+		if(a<4) try{a=a&(a=+(a<2))|(this.getUint8(this.i++)|256)<<a}catch{a=256<<a}
+		this.bitState = a>>2; return a&3
+	}
+	b4(){
+		let a = this.bitState
+		if(a<16){
+			let x = -21936>>(a<<1)&3;
+			try{a=a&7>>(3-x)|(this.getUint8(this.i++)|256)<<x}catch{a=256<<x}
+		}
+		this.bitState = a>>4; return a&15
+	}
 	u8(){ try{return this.getUint8(this.i++)}catch{return 0} }
 	i8(){ try{return this.getInt8(this.i++)}catch{return 0} }
 	u16(){ try{return this.getUint16((this.i+=2)-2)}catch{return 0} }
 	i16(){ try{return this.getInt16((this.i+=2)-2)}catch{return 0} }
+	u24(){ try{return this.getUint8(this.i)<<16|this.getUint16((this.i+=3)-2)}catch{return 0} }
+	i24(){ try{return this.getInt8(this.i)<<16|this.getUint16((this.i+=3)-2)}catch{return 0} }
 	u32(){ try{return this.getUint32((this.i+=4)-4)}catch{return 0} }
 	i32(){ try{return this.getInt32((this.i+=4)-4)}catch{return 0} }
+	u48(){ try{return this.getUint16((this.i+=6)-6)*4294967296+this.getUint32(this.i-4)}catch{return 0} }
+	i48(){ try{return this.getInt16((this.i+=6)-6)*4294967296+this.getUint32(this.i-4)}catch{return 0} }
 	u64(){ try{return this.getUint32((this.i+=8)-8)*4294967296+this.getUint32(this.i-4)}catch{return 0} }
 	i64(){ try{return this.getInt32((this.i+=8)-8)*4294967296+this.getUint32(this.i-4)}catch{return 0} }
 	bu64(){ try{return this.getBigUint64((this.i+=8)-8)}catch{return 0} }
@@ -115,6 +137,7 @@ export class BufWriter{
 		this.buf = new DataView(arr)
 		this.buf8 = new Uint8Array(arr)
 		this.i = head<=(this.cap=arr.byteLength)?head:this.cap
+		this.bitState = 0
 	}
 	_grow(n = 0){
 		const r = new Uint8Array(new ArrayBuffer(this.cap=(this.cap<<1)+n))
@@ -123,16 +146,51 @@ export class BufWriter{
 		this.buf8 = r
 	}
 	encode(t,v){return t.encode(this,v)}
+	b1(n=0){
+		let a=this.bitState
+		if(!(a&7)){
+			if(this.i >= this.cap) this._grow()
+			a = this.i<<3
+			this.buf8[this.i++] = 0
+		}
+		this.buf8[a>>>3] |= n<<(a&7); this.bitState = a+1
+	}
+	b2(n=0){
+		let a=this.bitState,b=a&7
+		if(b){
+			this.buf8[a>>>3] |= n<<b
+			if(b<7){this.bitState=a+2;return}
+			a = b = 1
+		}else a = 2
+		if(this.i >= this.cap) this._grow()
+		this.bitState = a|this.i<<3
+		this.buf8[this.i++] = n>>b
+	}
+	b4(n=0){
+		let a=this.bitState,b=a&7
+		if(b){
+			this.buf8[a>>>3] |= n<<b
+			if(b<5){this.bitState=a+4;return}
+			a = b-4; b = 8-b
+		}else a = 4
+		if(this.i >= this.cap) this._grow()
+		this.bitState = a|this.i<<3
+		this.buf8[this.i++] = n>>b
+	}
 	u8(n=0){ if(this.i >= this.cap)this._grow(); this.buf8[this.i++] = n }
 	i8(n=0){ if(this.i >= this.cap)this._grow(); this.buf8[this.i++] = n }
 	u16(n=0){ if((this.i+=2) > this.cap)this._grow(); this.buf8[this.i-2] = n>>8; this.buf8[this.i-1] = n }
 	i16(n=0){ if((this.i+=2) > this.cap)this._grow(); this.buf8[this.i-2] = n>>8; this.buf8[this.i-1] = n }
+	u24(n=0){ if((this.i+=3) > this.cap)this._grow(); this.buf8[this.i-3] = n>>16; this.buf8[this.i-2] = n>>8; this.buf8[this.i-1] = n }
+	i24(n=0){ if((this.i+=3) > this.cap)this._grow(); this.buf8[this.i-3] = n>>16; this.buf8[this.i-2] = n>>8; this.buf8[this.i-1] = n }
 	u32(n=0){ if((this.i+=4) > this.cap)this._grow(); this.buf.setUint32(this.i-4, n) }
 	i32(n=0){ if((this.i+=4) > this.cap)this._grow(); this.buf.setInt32(this.i-4, n) }
+	u48(n=0){ if((this.i+=6) > this.cap)this._grow(); this.buf.setUint16(this.i-6, floor(trunc(n)/4294967296)); this.buf.setInt32(this.i-4, n|0) }
+	i48(n=0){ if((this.i+=6) > this.cap)this._grow(); this.buf.setInt16(this.i-6, floor(trunc(n)/4294967296)); this.buf.setInt32(this.i-4, n|0) }
 	u64(n=0){ if((this.i+=8) > this.cap)this._grow(); this.buf.setUint32(this.i-8, floor(trunc(n)/4294967296)); this.buf.setInt32(this.i-4, n|0) }
 	i64(n=0){ if((this.i+=8) > this.cap)this._grow(); this.buf.setInt32(this.i-8, floor(trunc(n)/4294967296)); this.buf.setInt32(this.i-4, n|0) }
-	bu64(n=0){ if((this.i+=8) > this.cap)this._grow(); this.buf.setBigUint64(this.i-8, n) }
-	bi64(n=0){ if((this.i+=8) > this.cap)this._grow(); this.buf.setBigInt64(this.i-8, n) }
+	bu64(n=0n){ if((this.i+=8) > this.cap)this._grow(); this.buf.setBigUint64(this.i-8, n) }
+	bi64(n=0n){ if((this.i+=8) > this.cap)this._grow(); this.buf.setBigInt64(this.i-8, n) }
 	f32(n=0){ if((this.i+=4) > this.cap)this._grow(); this.buf.setFloat32(this.i-4, n) }
 	f64(n=0){ if((this.i+=8) > this.cap)this._grow(); this.buf.setFloat64(this.i-8, n) }
 	bool(n=false){ if(this.i >= this.cap)this._grow(); this.buf8[this.i++] = n }
@@ -148,7 +206,7 @@ export class BufWriter{
 			else this.buf8[this.i++] = n>>8|64, this.buf8[this.i++] = n
 		}else this.buf8[this.i++] = n<0?0:n
 	}
-	bv64(bn=0){
+	bv64(bn=0n){
 		if(this.i > this.cap-8) this._grow()
 		const n = Number(bn)
 		if(n > 0x3F){
@@ -244,14 +302,21 @@ export class BufWriter{
 if('transfer' in ArrayBuffer.prototype) BufWriter.prototype._grow = function(n=0){ this.buf = new DataView(this.buf.buffer.transfer(this.cap=(this.cap<<1)+n)) }
 // Feds are coming, watch out!
 let encodable = (f,e,d,s) => (f.encode=e,f.decode=d,f.size=s,f)
+export const b1 = encodable((a=0) => +!!a, (buf,a) => buf.b1(a), (buf,_) => buf.b1(),0)
+export const b2 = encodable((a=0) => (typeof a=='number'?a:Number(a))&3, (buf,a) => buf.b2(a), (buf,_) => buf.b2(),0)
+export const b4 = encodable((a=0) => (typeof a=='number'?a:Number(a))&15, (buf,a) => buf.b4(a), (buf,_) => buf.b4(),0)
 export const u8 = encodable((a=0) => (typeof a=='number'?a:Number(a))&255, (buf,a) => buf.u8(a), (buf,_) => buf.u8(),1)
 export const i8 = encodable((a=0) => (typeof a=='number'?a:Number(a))<<24>>24, (buf,a) => buf.i8(a), (buf,_) => buf.i8(),1)
 export const u16 = encodable((a=0) => (typeof a=='number'?a:Number(a))&65535, (buf,a) => buf.u16(a), (buf,_) => buf.u16(),2)
 export const i16 = encodable((a=0) => (typeof a=='number'?a:Number(a))<<16>>16, (buf,a) => buf.i16(a), (buf,_) => buf.i16(),2)
+export const u24 = encodable((a=0) => (typeof a=='number'?a:Number(a))&16777215, (buf,a) => buf.u24(a), (buf,_) => buf.u24(),3)
+export const i24 = encodable((a=0) => (typeof a=='number'?a:Number(a))<<8>>8, (buf,a) => buf.i24(a), (buf,_) => buf.i24(),3)
 export const u32 = encodable((a=0) => (typeof a=='number'?a:Number(a))>>>0, (buf,a) => buf.u32(a), (buf,_) => buf.u32(),4)
 export const i32 = encodable((a=0) => (typeof a=='number'?a:Number(a))|0, (buf,a) => buf.i32(a), (buf,_) => buf.i32(),4)
+export const u48 = encodable((a=0) => (floor(trunc(a=(typeof a=='number'?a:Number(a)))/4294967296)&65535)*4294967296+(a>>>0), (buf,a) => buf.u48(a), (buf,_) => buf.u48(),6)
+export const i48 = encodable((a=0) => (floor(trunc(a=(typeof a=='number'?a:Number(a)))/4294967296)<<16>>16)*4294967296+(a>>>0), (buf,a) => buf.i48(a), (buf,_) => buf.i48(),6)
 export const u64 = encodable((a=0) => (floor(trunc(a=(typeof a=='number'?a:Number(a)))/4294967296)>>>0)*4294967296+(a>>>0), (buf,a) => buf.u64(a), (buf,_) => buf.u64(),8)
-export const i64 = encodable((a=0) => floor(trunc(a=(typeof a=='number'?a:Number(a)))/4294967296)*4294967296+(a>>>0), (buf,a) => buf.i64(a), (buf,_) => buf.i64(),8)
+export const i64 = encodable((a=0) => (floor(trunc(a=(typeof a=='number'?a:Number(a)))/4294967296)|0)*4294967296+(a>>>0), (buf,a) => buf.i64(a), (buf,_) => buf.i64(),8)
 export const bu64 = encodable((a=0n) => (typeof a=='bigint'?a:BigInt(a))&0xFFFFFFFFFFFFFFFFn, (buf,a) => buf.bu64(a), (buf,_) => buf.bu64(),8)
 export const bi64 = encodable((a=0n) => BigInt.asIntN(64, typeof a=='bigint'?a:BigInt(a)), (buf,a) => buf.bi64(a), (buf,_) => buf.bi64(),8)
 export const f32 = encodable((a=0) => fround(typeof a=='number'?a:Number(a)), (buf,a) => buf.f32(a), (buf,_) => buf.f32(),4)

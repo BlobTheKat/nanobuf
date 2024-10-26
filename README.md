@@ -94,18 +94,25 @@ console.assert(Point.Triangle.size == 24)
 
 ## Interface
 ```ts
-type StructType = Struct | Arr | Enum | Optional | Padding | bool | u8 | i8 | u16 | i16 | u32 | i32 | u64 | i64 | bu64 | bi64 | f32 | f64 | v16 | v32 | v64 | bv64 | u8arr | str
+type StructType = Struct | Arr | Enum | Optional | Padding | bool | b1 | b2 | b4 | u8 | i8 | u16 | i16 | u24 | i24 | u32 | i32 | u48 | i48 | u64 | i64 | bu64 | bi64 | f32 | f64 | v16 | v32 | v64 | bv64 | u8arr | str
 
-// Always use buf.<thing>(123) instead of buf.encode(<thing>, 123) when available, since the argument types are static it will always be more performant
+// Always use buf.<type>(123) instead of buf.encode(<type>, 123) when available (since the argument types are static it will always be more performant)
 class BufWriter{
 	constructor(arr?: ArrayBuffer, head?: number) // Construct a new BufWriter, optionally passing the underlying ArrayBuffer and head position. Once the head surpasses the ArrayBuffer's length, it is discarded (and possibly detached) and a new ArrayBuffer is allocated and used
 	bool(n: boolean) // true or false, 1 byte
+	b1(n: number | boolean) // Write a 0 or 1, 1 bit
+	b2(n: number) // Write a value in [0,3], 2 bit
+	b4(n: number) // Write a value in [0,15], 4 bit
 	u8(n: number) // Write a value in [0, 255], 1 byte
 	i8(n: number) // Write a value in [-128, 127], 1 byte
 	u16(n: number) // Write a value in [0, 65535], 2 bytes
 	i16(n: number) // Write a value in [-32768, 32767], 2 bytes
+	u24(n: number) // Write a value in [0, 16777215], 3 bytes
+	i24(n: number) // Write a value in [-8388608, 8388607], 3 bytes
 	u32(n: number) // Write a value in [0, 4294967295], 4 bytes
 	i32(n: number) // Write a value in [-2147483648, 2147483647], 4 bytes
+	u48(n: number) // Write a value in [0, 281474976710655], 6 bytes
+	i48(n: number) // Write a value in [-140737488355328, 140737488355327], 6 bytes
 	u64(n: number) // Write a value in [0, 18446744073709552000], 8 bytes
 	i64(n: number) // Write a value in [-9223372036854776000, 9223372036854776000], 8 bytes
 	bu64(n: bigint) // Write a value in [0n,18446744073709551615n], 8 bytes
@@ -131,16 +138,28 @@ class BufWriter{
 	buffer: ArrayBuffer // The underlying array buffer that is being modified. May be larger than this.written (this is intentional to avoid excessive reallocations). May become detached as writer grows
 	byteOffset: number // Always 0
 	byteLength: number // Same as .written
+
+	// For b1,b2,b4, it's possible to allocate a new byte even if the previous hasn't been fully used or finish using an old one by controlling the .bitState field on the reader/writer
+	// Set it to 0 to use a new byte. Save and restore its old value to reuse an old byte (if there was one)
+	// This value is opaque but gettable/settable. Note that when reading it must be set in the same way as when it was written
+	bitState: number
 }
 
 class BufReader extends DataView{
 	bool(): boolean // true or false, 1 byte
+	b1(): number // Read a 0 or 1, 1 bit
+	b2(): number // Read a value in [0,3], 2 bit
+	b4(): number // Read a value in [0,15], 4 bit
 	u8(): number // Read a value in [0, 255], 1 byte
 	i8(): number // Read a value in [-128, 127], 1 byte
 	u16(): number // Read a value in [0, 65535], 2 bytes
 	i16(): number // Read a value in [-32768, 32767], 2 bytes
+	u24(): number // Read a value in [0, 16777215], 3 bytes
+	i24(): number // Read a value in [-8388608, 8388607], 3 bytes
 	u32(): number // Read a value in [0, 4294967295], 4 bytes
 	i32(): number // Read a value in [-2147483648, 2147483647], 4 bytes
+	u48(): number // Read a value in [0, 281474976710655], 6 bytes
+	i48(): number // Read a value in [-140737488355328, 140737488355327], 6 bytes
 	u64(): number // Read a value in [0, 18446744073709552000], 8 bytes
 	i64(): number // Read a value in [-9223372036854776000, 9223372036854776000], 8 bytes
 	bu64(): bigint // Read a value in [0n,18446744073709551615n], 8 bytes
@@ -166,6 +185,7 @@ class BufReader extends DataView{
 	read: number // How many bytes have been read from this buffer so far
 	remaining: number // How many more bytes can be read before reaching the end of the buffer
 	overran: boolean // Whether we have reached and passed the end of the buffer. All read functions will return "null" values (i.e, 0, "", Uint8Array(0)[], false, ...)
+	bitState: number // See BufWriter.prototype.bitState
 }
 
 // The following types are constructors and implement the static encode and decode methods, so they can be used with schemas. These methods are ommitted for brevity. Do not use new with these constructors
@@ -177,12 +197,23 @@ class BufReader extends DataView{
 
 type bool
 
+// Values are packed together in a u8, LSb first (`a, bc, def` gets packed as `00fedcba`)
+// Once a byte is full, another is allocated. If a byte is not fully used the remaining bits are 0
+// See BufWriter.prototype.bitState for more info on controlling this behavior
+type b1
+type b2
+type b4
+
 type u8
 type i8
 type u16
 type i16
+type u24
+type i24
 type u32
 type i32
+type u48
+type i48
 type u64
 type i64
 type bu64
