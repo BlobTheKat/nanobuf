@@ -238,23 +238,23 @@ export class BufWriter{
 		if(n < 0){
 			n = v.byteLength
 			if(n>2147483647){if(this.i >= this.cap) grow(this); this.buf8[this.i++] = 0;return}
-			if(this.i > this.cap-4-n) grow(thisn)
+			if(this.i > this.cap-4-n) grow(this,n)
 			if(n > 0x3FFF){
 				if(n > 0x7FFFFFFF) this.buf8[this.i++] = n = 0
 				else this.buf.setInt32((this.i += 4) - 4, n | 0x80000000)
 			}else if(n > 0x3F) this.buf8[this.i++] = n>>8|64, this.buf8[this.i++] = n
 			else this.buf8[this.i++] = n
-		}else if(this.i > this.cap-n) grow(thisn)
+		}else if(this.i > this.cap-n) grow(this,n)
 		this.buf8.set(v, this.i); this.i += n
 	}
 	/** Advance a number of bytes. Useful for padding */
-	skip(n=0){ if((this.i+=n) > this.cap) grow(thisn) }
+	skip(n=0){ if((this.i+=n) > this.cap) grow(this,n) }
 	str(v=''){
 		if(this.i > this.cap-4) grow(this)
 		const encoded = encoder.encode(v)
 		let n = encoded.length
 		if(n>2147483647){if(this.i >= this.cap) grow(this); this.buf8[this.i++] = 0;return}
-		if(this.i > this.cap-4-n) grow(thisn)
+		if(this.i > this.cap-4-n) grow(this,n)
 		if(n > 0x3FFF){
 			if(n > 0x7FFFFFFF) this.buf8[this.i++] = n = 0
 			else this.buf.setInt32((this.i += 4) - 4, n | 0x80000000)
