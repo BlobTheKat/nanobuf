@@ -78,7 +78,7 @@ export class BufReader extends DataView{
 			len = this.getUint8(i++)
 			if(len >= 64){
 				if(len >= 128)len = this.getUint32(i) & 0x7FFFFFFF, i += 3
-				else len = this.getUint8(this.i++)|n<<8&0x3FFF
+				else len = this.getUint8(this.i++)|len<<8&0x3FFF
 			}
 		}
 		this.i = i + len
@@ -89,7 +89,7 @@ export class BufReader extends DataView{
 		let len = this.getUint8(i++)
 		if(len >= 64){
 			if(len >= 128)len = this.getUint32(i) & 0x7FFFFFFF, i += 3
-			else len = this.getUint8(this.i++)|n<<8&0x3FFF
+			else len = this.getUint8(this.i++)|len<<8&0x3FFF
 		}
 		this.i = i + len
 		return decoder.decode(new Uint8Array(this.buffer, this.byteOffset + i, len))
@@ -131,7 +131,7 @@ export class BufReader extends DataView{
 	}
 }
 const {floor, trunc, fround} = Math
-const grow = 'transfer' in ArrayBuffer.prototype ? (b,n=0)=>{ b.buf8 = new Uint8Array((b.buf = new DataView(b.buf.buffer.transfer(this.cap=(this.cap<<1)+n))).buffer) } : (b, n = 0) => {
+const grow = 'transfer' in ArrayBuffer.prototype ? (b,n=0)=>{ b.buf8 = new Uint8Array((b.buf = new DataView(b.buf.buffer.transfer(b.cap=(b.cap<<1)+n))).buffer) } : (b, n = 0) => {
 	const r = new Uint8Array(new ArrayBuffer(b.cap=(b.cap<<1)+n))
 	r.set(b.buf8, 0); b.buf = new DataView(r.buffer); b.buf8 = r
 }
