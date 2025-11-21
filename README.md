@@ -128,6 +128,7 @@ class BufWriter{
 	enum(enumType: Enum, value: string) // Write value's corresponding integer value according to enumType using v32
 	encode(type: StructType, value: any) // Encode an arbitrary type
 	skip(bytes: number) // Skip a number of bytes, leaving them unwritten (0)
+	append(arr: ArrayBufferView | ArrayBuffer | DataWriter) // Append a buffer to the end. Similar to u8arr(bytes, len)
 
 	toUint8Array(): Uint8Array // View into the currently written data. May become detached as writer grows, consider using a copying method
 	toReader(): BufReader // Reader for the currently written data. May become detached as writer grows, consider using a copying method

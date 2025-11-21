@@ -3,7 +3,10 @@ export const encoder = new TextEncoder()
 
 globalThis.TypedArray ??= Object.getPrototypeOf(Uint8Array)
 export class BufReader extends DataView{
-	/**  */
+	/**
+	 * Construct a new BufReader to parse data from the supplied buffer
+	 * @param {ArrayBufferView | ArrayBuffer} arr
+	 */
 	constructor(arr){
 		if(arr instanceof ArrayBuffer) super(arr)
 		else super(arr.buffer, arr.byteOffset, arr.byteLength)
@@ -72,6 +75,7 @@ export class BufReader extends DataView{
 	}catch{return 0} }
 	/** Advance a number of bytes. Useful for padding */
 	skip(n){ this.i += n }
+	/** Read an Uint8Array, optionally first reading the length as a `v32` if it isn't supplied as a parameter */
 	u8arr(len = -1){ try{
 		let i = this.i
 		if(len < 0){
@@ -230,10 +234,11 @@ export class BufWriter{
 		if(n > 0x7F) this.buf8[this.i++] = n>>8|128, this.buf8[this.i++] = n
 		else this.buf8[this.i++] = n>=0?n:0
 	}
+	/** Write a Uint8Array, optionally first writing the length as a `v32` if it isn't supplied as the second parameter */
 	u8arr(v, n = -1){
 		if(!(v instanceof Uint8Array)){
 			if(v instanceof BufWriter) v = v.buf8.subarray(0, v.i)
-			else{if(this.i >= this.cap) grow(this); this.buf8[this.i++] = 0;return}
+			else v = new Uint8Array()
 		}
 		if(n < 0){
 			n = v.byteLength
@@ -245,6 +250,13 @@ export class BufWriter{
 			}else if(n > 0x3F) this.buf8[this.i++] = n>>8|64, this.buf8[this.i++] = n
 			else this.buf8[this.i++] = n
 		}else if(this.i > this.cap-n) grow(this,n)
+		this.buf8.set(n<v.length?v.subarray(0,n):v, this.i); this.i += n
+	}
+	append(v){
+		if(v instanceof BufWriter) v = v.buf8.subarray(0, v.i)
+		else if(!(v instanceof Uint8Array)) v = v instanceof ArrayBuffer ? new Uint8Array(v) : new Uint8Array(v.buffer, v.byteOffset, v.byteLength)
+		const n = v.byteLength
+		if(this.i > this.cap-n) grow(this, n)
 		this.buf8.set(v, this.i); this.i += n
 	}
 	/** Advance a number of bytes. Useful for padding */
