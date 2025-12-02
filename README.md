@@ -5,9 +5,9 @@ import { BufWriter } from 'nanobuf'
 
 const buf = new BufWriter()
 
-buf.u32(12345) // u̲nsigned ̲3̲2-bit integer
-buf.str('Hello world!') // ̲st̲r̲ing
-buf.f64(420.69) // ̲6̲4-bit f̲loat (double)
+buf.u32(12345) // u̲nsigned 3̲2̲-bit integer
+buf.str('Hello world!') // s̲t̲r̲ing
+buf.f64(420.69) // 6̲4̲-bit f̲loat (double)
 
 const packet = buf.toUint8Array() // Uint8Array(25) [ 0, 0, 48, 57, 12, ... ]
 
