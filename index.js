@@ -147,6 +147,7 @@ export class BufWriter{
 		this.i = head<=(this.cap=arr.byteLength)?head:this.cap
 		this.bitState = 0
 	}
+	clear(){ this.i = this.bitState = 0 }
 	encode(t,v){return t.encode(this,v)}
 	b1(n=0){
 		let a=this.bitState
