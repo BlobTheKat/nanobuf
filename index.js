@@ -85,8 +85,7 @@ export class BufReader extends DataView{
 				else len = this.getUint8(this.i++)|len<<8&0x3FFF
 			}
 		}
-		this.i = i + len
-		return new Uint8Array(this.buffer.slice(i+=this.byteOffset, len))
+		return new Uint8Array(this.buffer.slice(this.byteOffset + i, this.byteOffset + (this.i = i + len)))
 	}catch{return new Uint8Array()} }
 	str(){
 		let i = this.i
