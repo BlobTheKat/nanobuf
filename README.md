@@ -99,6 +99,7 @@ type StructType = Struct | Arr | Enum | Optional | Padding | bool | b1 | b2 | b4
 // Always use buf.<type>(123) instead of buf.encode(<type>, 123) when available (since the argument types are static it will always be more performant)
 class BufWriter{
 	constructor(arr?: ArrayBuffer, head?: number) // Construct a new BufWriter, optionally passing the underlying ArrayBuffer and head position. Once the head surpasses the ArrayBuffer's length, it is discarded (and possibly detached) and a new ArrayBuffer is allocated and used
+	clear(free?: boolean) // Clear the BufWriter so that the object can be reused
 	bool(n: boolean) // true or false, 1 byte
 	b1(n: number | boolean) // Write a 0 or 1, 1 bit
 	b2(n: number) // Write a value in [0,3], 2 bit

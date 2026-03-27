@@ -146,7 +146,14 @@ export class BufWriter{
 		this.i = head<=(this.cap=arr.byteLength)?head:this.cap
 		this.bitState = 0
 	}
-	clear(){ this.i = this.bitState = 0 }
+	clear(free = false){
+		this.i = this.bitState = 0
+		if(free){
+			const arr = new ArrayBuffer(32)
+			this.buf = new DataView(arr)
+			this.buf8 = new Uint8Array(arr)
+		}
+	}
 	encode(t,v){return t.encode(this,v)}
 	b1(n=0){
 		let a=this.bitState
