@@ -81,30 +81,30 @@ export class BufReader extends DataView{
 		if(len < 0){
 			len = this.getUint8(i++)
 			if(len >= 64){
-				if(len >= 128)len = this.getUint32(i) & 0x7FFFFFFF, i += 3
-				else len = this.getUint8(this.i++)|len<<8&0x3FFF
+				if(len >= 128)len = this.getUint32(i-1) & 0x7FFFFFFF, i += 3
+				else len = this.getUint8(i++)|len<<8&0x3FFF
 			}
 		}
 		return new Uint8Array(this.buffer.slice(this.byteOffset + i, this.byteOffset + (this.i = i + len)))
 	}catch{return new Uint8Array()} }
-	str(){
+	str(){ try{
 		let i = this.i
 		let len = this.getUint8(i++)
 		if(len >= 64){
-			if(len >= 128)len = this.getUint32(i) & 0x7FFFFFFF, i += 3
-			else len = this.getUint8(this.i++)|len<<8&0x3FFF
+			if(len >= 128)len = this.getUint32(i-1) & 0x7FFFFFFF, i += 3
+			else len = this.getUint8(i++)|len<<8&0x3FFF
 		}
 		this.i = i + len
 		return decoder.decode(new Uint8Array(this.buffer, this.byteOffset + i, len))
-	}
-	enum({intToStr, defaultString}){
+	}catch{ return '' } }
+	enum({intToStr, defaultString}){ try{
 		let n = this.getUint8(this.i++)
 		if(n > 64){
 			if(n >= 128) n = this.getUint32((this.i += 3)-4) & 0x7FFFFFFF
 			else n = this.getUint8(this.i++)|n<<8&0x3FFF
 		}
 		return intToStr[n]??defaultString
-	}
+	}catch{ return defaultString } }
 	/** Returns a mutable Uint8Array view of the next bytes */
 	view(size=0){ return new Uint8Array(this.buffer, this.byteOffset+(this.i+=size)-size, size) }
 	/** How many bytes have been read from this buffer so far */
