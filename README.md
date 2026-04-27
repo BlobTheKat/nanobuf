@@ -87,9 +87,9 @@ buf.encode(Point.Triangle, [
 	new Point(5, 6)
 ])
 // Data is always packed tightly
-console.assert(buf.byteLength == f32.size * 2 * 3)
-// You can also check the size of aggregate types (such as Struct() and Arr() with fixed length)
-console.assert(Point.Triangle.size == 24)
+console.assert(buf.byteLength == f32.minLength * 2 * 3)
+// You can also check the min length of aggregate types (such as Struct() and Arr() with fixed length)
+console.assert(Point.Triangle.minLength == 24)
 ```
 
 ## Interface
@@ -128,8 +128,13 @@ class BufWriter{
 	str(s: string) // Write s's length using v32, followed by s encoded as UTF-8, maximum s.length*3 bytes
 	enum(enumType: Enum, value: string) // Write value's corresponding integer value according to enumType using v32
 	encode(type: StructType, value: any) // Encode an arbitrary type
+
 	skip(bytes: number) // Skip a number of bytes, leaving them unwritten (0)
-	append(arr: ArrayBufferView | ArrayBuffer | DataWriter) // Append a buffer to the end. Similar to u8arr(bytes, len)
+	// Append a buffer to the end.
+	// Same semantics to u8arr(bytes, len), but with varying amount of checks
+	append(arr: ArrayBufferView | ArrayBuffer | DataWriter)
+	array(arr: ArrayBufferView)
+	arrayBuffer(arr: ArrayBuffer)
 
 	toUint8Array(): Uint8Array // View into the currently written data. May become detached as writer grows, consider using a copying method
 	toReader(): BufReader // Reader for the currently written data. May become detached as writer grows, consider using a copying method
@@ -176,8 +181,12 @@ class BufReader extends DataView{
 	str(): string // Read a string of length (this.v32()), decoded from UTF-8, maximum result.length*3 bytes
 	enum(enumType: Enum): string // Read a v32 and return its corresponding string value according to enumType
 	decode(type: StructType): any // Decode an arbitrary type
+
 	skip(bytes: number) // Skip a number of bytes, not bothering to read them
-	view(bytes: number) // Skip a number of bytes and return a Uint8Array pointing to those skipped bytes. Similar to u8arr(len)
+	view(bytes: number) // Skip a number of bytes and return a Uint8Array pointing directly to those skipped bytes. This method will throw on out of bounds
+	array(bytes: number) // return a copied Uint8Array pointing to some bytes
+	arrayBuffer(bytes: number) // return a copied ArrayBuffer pointing to some bytes
+
 
 	toUint8Array(): Uint8Array // Get a Uint8Array pointing to remaining unread data. This is a reference and not a copy. Use Uint8Array.slice() to turn it into a copy
 	copyReadToArrayBuffer(): ArrayBuffer // Copies all the bytes that have already been read since this object's creation into a new ArrayBuffer

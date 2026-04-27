@@ -105,8 +105,12 @@ export class BufReader extends DataView{
 		}
 		return intToStr[n]??defaultString
 	}catch{ return defaultString } }
-	/** Returns a mutable Uint8Array view of the next bytes */
-	view(size=0){ return new Uint8Array(this.buffer, this.byteOffset+(this.i+=size)-size, size) }
+	/** Returns a mutable Uint8Array view of the next bytes. THIS METHOD CAN THROW if out of bounds */
+	view(size=0){ return new Uint8Array(this.buffer, this.byteOffset+this.i, (this.i += size, size)) }
+	/** Returns a copied Uint8Array of the next bytes. */
+	array(size=0){ try{ return new Uint8Array(this.buffer.slice(this.byteOffset+this.i, this.byteOffset+(this.i+=size))); }catch{ return new Uint8Array(size) } }
+	/** Returns a copied ArrayBuffer of the next bytes. */
+	arrayBuffer(size=0){ try{ return this.buffer.slice(this.byteOffset+this.i, this.byteOffset+(this.i+=size)); }catch{ return new ArrayBuffer(size) } }
 	/** How many bytes have been read from this buffer so far */
 	get read(){ return this.i }
 	/** How many more bytes can be read before reaching the end of the buffer */
@@ -266,6 +270,16 @@ export class BufWriter{
 		if(this.i > this.cap-n) grow(this, n)
 		this.buf8.set(v, this.i); this.i += n
 	}
+	array(v){
+		const n = v.byteLength
+		if(this.i > this.cap-n) grow(this, n)
+		this.buf8.set(v instanceof Uint8Array ? v : new Uint8Array(v.buffer, v.byteOffset, v.byteLength), this.i); this.i += n
+	}
+	arrayBuffer(v){
+		const n = v.byteLength
+		if(this.i > this.cap-n) grow(this, n)
+		this.buf8.set(new Uint8Array(v), this.i); this.i += n
+	}
 	/** Advance a number of bytes. Useful for padding */
 	skip(n=0){ if((this.i+=n) > this.cap) grow(this,n) }
 	str(v=''){
@@ -317,7 +331,7 @@ export class BufWriter{
 	}
 }
 // Feds are coming, watch out!
-let encodable = (f,e,d,s) => (f.encode=e,f.decode=d,f.size=s,f)
+let encodable = (f,e,d,s) => (f.encode=e,f.decode=d,f.minLength=s,f)
 export const b1 = encodable((a=0) => +!!a, (buf,a) => buf.b1(a), (buf,_) => buf.b1(),0)
 export const b2 = encodable((a=0) => (typeof a=='number'?a:Number(a))&3, (buf,a) => buf.b2(a), (buf,_) => buf.b2(),0)
 export const b4 = encodable((a=0) => (typeof a=='number'?a:Number(a))&15, (buf,a) => buf.b4(a), (buf,_) => buf.b4(),0)
@@ -358,13 +372,13 @@ export let Struct = (obj, f) => {
 		f3ret.push(''+n+':this.a'+i+'.decode(b)')
 		n = (n.length==k.length?'v.'+n:'v['+n+']')
 		f3bod.push(n+'=this.a'+i+'.decode(b,'+n+')')
-		sz += (os['a'+i++] = obj[k]).size??0
+		sz += (os['a'+i++] = obj[k]).minLength??0
 	}
 	const f1bod = `return{${f1ret}}`
 	f ??= new Struct.constructor(`{${fparams}}={}`, f1bod).bind(os)
 	f.encode = new Struct.constructor(`b,{${fparams}}={}`, f2bod.join(';')).bind(os)
 	f.decode = new Struct.constructor(`b,v`, `if(!v)return {${f3ret}};${f3bod.join(';')};return v`).bind(os)
-	f.size = sz
+	f.minLength = sz
 	f.of = new Struct.constructor(Object.keys(os), f1bod).bind(os)
 	return f
 }
@@ -392,7 +406,7 @@ export const Arr = (type, len = -1) => {
 	if(v) for(let i = 0; i < l; i++) v[i] = type.decode(buf, v[i])
 	else{ v = []; for(let i = l; --i>=0;) v.push(type.decode(buf)) }
 	return v
-}, len<0?1:(type.size??0)*len);f.of=(...a)=>f(a);return f}
+}, len<0?1:(type.minLength??0)*len);f.of=(...a)=>f(a);return f}
 
 export const Optional = t => encodable(a => a==null?null:t(a), (buf,v) => {
 	if(v==null) buf.u8(0)
