@@ -356,9 +356,14 @@ export const v32 = encodable((a=0) => (a=typeof a=='number'?a:Number(a))<0?0:a&2
 export const v64 = encodable((a=0) => (typeof a=='number'?a:Number(a))<0?0:a%9223372036854775808, (buf,a) => buf.v32(a), (buf,_) => buf.v32(),1)
 export const bv64 = encodable((a=0n) => (typeof a=='bigint'?a:BigInt(a))<0n?0n:a&0x7FFFFFFFFFFFFFFFn, (buf,a) => buf.v32(a), (buf,_) => buf.v32(),1)
 export const u8arr = encodable(a => {try{const b = typeof a == 'string' ? encoder.encode(a) : new Uint8Array(a.buffer ? a.buffer.slice(a.byteOffset, a.byteLength) : a instanceof ArrayBuffer ? a.slice(0,2147483647) : a);return b.byteLength>2147483647?b.subarray(0,2147483647):b}catch{return new Uint8Array()}}, (buf,a) => buf.u8arr(a), (buf,_) => buf.u8arr(),1)
-u8arr.len = len => ((len=floor(len))>=0||(len=0), encodable(a => a instanceof ArrayBuffer ? new Uint8Array(a.byteLength >= len ? a.slice(0, len) : len) : new Uint8Array(a?.length === len ? a : len), (buf,a) => buf.u8arr(a, len), (buf,_) => buf.u8arr(len),len))
 export const str = encodable((a='') => a+'', (buf,a) => buf.str(a), (buf,_) => buf.str(),1)
 export const bool = encodable(a => !!a, (buf,a) => buf.bool(a), (buf,_) => buf.bool(),1)
+
+u8arr.len = len => {
+	if(!((len=floor(len))>=0)) len = -1
+	return encodable(a => a instanceof ArrayBuffer ? new Uint8Array(a.byteLength >= len ? a.slice(0, len) : len) : new Uint8Array(a?.length === len ? a : len),
+		(buf,a) => buf.u8arr(a, len), (buf,_) => buf.u8arr(len),len)
+}
 
 export let Struct = (obj, f) => {
 	const fparams = [], f1ret = [], f2bod = [], f3bod = [], f3ret = []
@@ -429,4 +434,4 @@ export const Enum = (v = [], def) => {
 	return f
 }
 
-export const Padding = (sz=0) => encodable(() => {}, (buf, _) => buf.skip(sz), (buf, _) => (buf.i += sz, void 0), sz)
+export const Padding = (sz=0) => encodable(() => {}, (buf, _) => buf.skip(sz), (buf, _) => { buf.i += sz }, sz)
