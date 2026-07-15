@@ -370,9 +370,9 @@ export let Struct = (obj, f) => {
 		f1ret.push(n+':this.a'+i+'(a'+i+')')
 		f2bod.push('this.a'+i+'.encode(b,a'+i+')')
 		f3ret.push(''+n+':this.a'+i+'.decode(b)')
-		n = (n.length==k.length?'v.'+n:'v['+n+']')
+		n = (n.length == k.length ? 'v.'+n : 'v['+n+']')
 		f3bod.push(n+'=this.a'+i+'.decode(b,'+n+')')
-		sz += (os['a'+i++] = obj[k]).minLength??0
+		sz += (os['a' + i++] = obj[k]).minLength??0
 	}
 	const f1bod = `return{${f1ret}}`
 	f ??= new Struct.constructor(`{${fparams}}={}`, f1bod).bind(os)
@@ -382,46 +382,51 @@ export let Struct = (obj, f) => {
 	f.of = new Struct.constructor(Object.keys(os), f1bod).bind(os)
 	return f
 }
-try{new Struct.constructor('')}catch{Struct = obj => encodable(a => {
-	const o = {}
-	for(const k in obj) o[k] = obj[k](a[k])
-	return o
-}, (buf, v={}) => {for(const k in obj) obj[k].encode(buf, v[k])},
-(buf, v={}) => {for(const k in obj) v[k]=obj[k].decode(buf, v[k]);return v})}
+try{ new Struct.constructor('') }catch{
+	Struct = obj => encodable(a => {
+		const o = {}
+		for(const k in obj) o[k] = obj[k](a[k])
+		return o
+	}, (buf, v = {}) => { for(const k in obj) obj[k].encode(buf, v[k]) },
+		(buf, v = {}) => { for(const k in obj) v[k] = obj[k].decode(buf, v[k]); return v })
+}
 export const Arr = (type, len = -1) => {
-	(len=floor(len))>=0||(len=-1)
-	const f=encodable(a => {
-	const arr = []
-	try{for(const el of a) arr.push(type(el))}catch{}
-	if(len >= 0){
-		if(arr.length > len) arr.length = len
-		else while(arr.length < len) arr.push(type())
-	}else if(arr.length > 2147483647) arr.length = 2147483647
-	return arr
-}, (buf, v=[]) => {
-	const l = len < 0 ? (buf.v32(v.length),v.length) : len
-	for(let i = 0; i < l; i++) type.encode(buf, v[i])
-}, (buf, v) => {
-	const l = len < 0 ? buf.v32() : len
-	if(v) for(let i = 0; i < l; i++) v[i] = type.decode(buf, v[i])
-	else{ v = []; for(let i = l; --i>=0;) v.push(type.decode(buf)) }
-	return v
-}, len<0?1:(type.minLength??0)*len);f.of=(...a)=>f(a);return f}
+	if(!((len=floor(len))>=0)) len = -1
+	const f = encodable(a => {
+		const arr = []
+		try{ for(const el of a) arr.push(type(el)) }catch{}
+		if(len >= 0){
+			if(arr.length > len) arr.length = len
+			else while(arr.length < len) arr.push(type())
+		}else if(arr.length > 2147483647) arr.length = 2147483647
+		return arr
+	}, (buf, v = []) => {
+		const l = len < 0 ? (buf.v32(v.length), v.length) : len
+		for(let i = 0; i < l; i++) type.encode(buf, v[i])
+	}, (buf, v) => {
+		let l = len < 0 ? buf.v32() : len
+		if(v) for(let i = 0; i < l; i++) v[i] = type.decode(buf, v[i])
+		else{ v = []; while(--l >= 0) v.push(type.decode(buf)) }
+		return v
+	}, len < 0 ? 1 : (type.minLength??0)*len)
+	f.of = (...a) => f(a)
+	return f
+}
 
 export const Optional = t => encodable(a => a==null?null:t(a), (buf,v) => {
-	if(v==null) buf.u8(0)
-	else buf.u8(1),t.encode(buf,v)
+	if(v == null) buf.u8(0)
+	else{ buf.u8(1); t.encode(buf,v) }
 }, (buf, v) => buf.u8() ? t.decode(buf, v) : null, 1)
 
-export const Enum = (v=[], def=undefined) => {
+export const Enum = (v = [], def) => {
 	const map = new Map, rmap = []
-	if(Array.isArray(v)) for(let i=0;i<v.length;i++) map.set(v[i]+'',i), rmap[i] = v[i]
-	else for(const k in v){const j=v[k]&2147483647;map.set(k, j);rmap[j]=k}
-	if(typeof def!='string') def=map.keys().next().value??''
+	if(Array.isArray(v)) for(let i = 0; i < v.length; i++) map.set(v[i]+'',i), rmap[i] = v[i]
+	else for(const k in v){ const j = v[k]&2147483647; map.set(k, j); rmap[j] = k }
+	if(typeof def != 'string') def = map.keys().next().value ?? ''
 	let none = -1; while(rmap[++none]);
-	const f = encodable(a => typeof a=='string'?map.get(a)??none:Number(a)&2147483647, (buf,a) => buf.v32(typeof a=='string'?map.get(a)??none:a), (buf, _) => rmap[buf.v32()]??def, 1)
+	const f = encodable(a => typeof a == 'string' ? map.get(a) ?? none : Number(a)&2147483647, (buf,a) => buf.v32(typeof a == 'string' ? map.get(a) ?? none : a), (buf, _) => rmap[buf.v32()] ?? def, 1)
 	f.strToInt = map; f.intToStr = rmap; f.default = none; f.defaultString = def
 	return f
 }
 
-export const Padding = (sz=0) => encodable(() => undefined, (buf,_) => buf.skip(sz), (buf, _) => (buf.i+=sz,undefined), sz)
+export const Padding = (sz=0) => encodable(() => {}, (buf, _) => buf.skip(sz), (buf, _) => (buf.i += sz, void 0), sz)
